@@ -44,3 +44,27 @@ def test_tools_dtm():
     assert term_freqs["beta"] == 3
     assert term_freqs["delta"] == 4
     assert term_freqs["gamma"] == 7
+
+
+def test_dtm_heatmap_tool_known_answer_21():
+    session = SessionState()
+
+    premade_tools, _ = load_workspace_tools("premade_tools", session)
+    load_dataset_tool = next(t for t in premade_tools if t.name == "load_dataset_tool")
+    load_dataset_tool.invoke({
+        "file_path": "agent_dev/sample_fixture.csv",
+        "text_column": "text",
+        "label_column": "label"
+    })
+
+    tools = make_tools(session)
+    build_dtm_tool = next(t for t in tools if t.name == "build_dtm_tool")
+    dtm_heatmap_tool = next(t for t in tools if t.name == "dtm_heatmap_tool")
+
+    build_dtm_tool.invoke({})
+
+    # Known answer 21: n_terms=2, n_documents=3 returns top-left 3x2 corner [[3, 1], [2, 1], [1, 1]]
+    res = dtm_heatmap_tool.invoke({"n_terms": 2, "n_documents": 3})
+    assert res["terms"] == ["alpha", "always"]
+    assert res["matrix"] == [[3, 1], [2, 1], [1, 1]]
+    assert session.pending_figure is not None

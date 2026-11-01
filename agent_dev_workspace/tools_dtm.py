@@ -1,6 +1,8 @@
 from typing import List, Optional, Union
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.feature_extraction.text import CountVectorizer
 from langchain_core.tools import tool
 
@@ -108,4 +110,57 @@ def make_tools(session):
         session.store_result("term_frequency_tool", {"top_n": top_n}, summary, full_report=report_df)
         return summary
 
-    return [build_dtm_tool, term_frequency_tool]
+    @tool
+    def dtm_heatmap_tool(n_terms: int = 20, n_documents: int = 20) -> dict:
+        """Renders a heatmap slice of the raw document-term matrix (DTM).
+
+        Args:
+            n_terms (int): Number of terms (columns) to include in vocabulary order. Defaults to 20.
+            n_documents (int): Number of documents (rows) to include in row order. Defaults to 20.
+
+        Returns:
+            Dict containing result_id, n_terms, n_documents, terms, doc_labels, and matrix.
+        """
+        if session.feature_matrix is None or session.feature_names is None:
+            return {"status": "error", "message": "No document-term matrix built in session."}
+
+        # Slice positional window
+        sliced = session.feature_matrix[:n_documents, :n_terms]
+        dense_slice = sliced.toarray() if hasattr(sliced, "toarray") else np.asarray(sliced)
+
+        terms_included = session.feature_names[:n_terms]
+        num_docs = dense_slice.shape[0]
+        doc_labels = [f"Doc {i}" for i in range(num_docs)]
+
+        # Plot Heatmap
+        fig, ax = plt.subplots(figsize=(8, 6))
+        sns.heatmap(
+            dense_slice,
+            annot=True,
+            fmt="d",
+            xticklabels=terms_included,
+            yticklabels=doc_labels,
+            cmap="Blues",
+            ax=ax
+        )
+        ax.set_title(f"DTM Heatmap Slice ({num_docs} docs x {len(terms_included)} terms)")
+        ax.set_xlabel("Terms")
+        ax.set_ylabel("Documents")
+        plt.tight_layout()
+
+        session.pending_figure = fig
+
+        result_id = session.next_result_id("dtm_heatmap")
+        summary = {
+            "result_id": result_id,
+            "n_terms": len(terms_included),
+            "n_documents": num_docs,
+            "terms": terms_included,
+            "doc_labels": doc_labels,
+            "matrix": dense_slice.tolist()
+        }
+
+        session.store_result("dtm_heatmap_tool", {"n_terms": n_terms, "n_documents": n_documents}, summary)
+        return summary
+
+    return [build_dtm_tool, term_frequency_tool, dtm_heatmap_tool]
